@@ -1,0 +1,31 @@
+[package]
+name = "fit0450-rp2040"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal Rust driver: talk to a DFRobot FIT0450 geared DC motor + its quadrature encoder via a Cytron MAKER-PI-RP2040"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Pin this to whatever major version your firmware project already uses.
+# The library is written against the 0.10.x API (embedded-hal 1.0 style traits).
+rp2040-hal = { version = "0.10", features = ["critical-section-impl", "rt"] }
+embedded-hal = "1.0"
+critical-section = "1.1"
+usb-device = "0.3"
+usbd-serial = "0.2"
+heapless = "0.8"
+
+[dev-dependencies]
+# Only needed to build the example in examples/basic_usage.rs
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+rp2040-boot2 = "0.3"
+panic-halt = "0.2"
+fugit = "0.3"
+
+# The example is a full `no_std`/`no_main` firmware binary, so it needs its
+# own target config (see .cargo/config.toml if you copy this into your own
+# project) - it will NOT build as part of a normal `cargo test` on a host.
+[[example]]
+name = "basic_usage"
+required-features = []
