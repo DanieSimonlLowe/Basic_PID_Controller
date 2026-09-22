@@ -1,0 +1,16 @@
+[build]
+target = "thumbv6m-none-eabi"
+
+[target.thumbv6m-none-eabi]
+# Pick whichever you actually have installed:
+# - elf2uf2-rs, then drag-and-drop the resulting .uf2 onto the RPI-RP2 drive
+# - probe-rs for SWD debugging/flashing
+runner = "elf2uf2-rs -d"
+
+rustflags = [
+  "-C", "link-arg=--nmagic",
+  "-C", "link-arg=-Tlink.x",
+]
+
+[env]
+DEFMT_LOG = "debug"

@@ -1,0 +1,17 @@
+[package]
+name = "fit0450-basic"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Adjust this path if you place the fit0450-rp2040 folder somewhere other
+# than right next to this project.
+fit0450-rp2040 = { path = "../motor" }
+
+rp2040-hal = { version = "0.10", features = ["critical-section-impl", "rt"] }
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+rp2040-boot2 = "0.3"
+panic-halt = "0.2"
+heapless = "0.8"
+
