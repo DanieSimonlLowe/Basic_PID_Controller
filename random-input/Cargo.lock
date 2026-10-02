@@ -159,19 +159,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
-name = "fit0450-basic"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "fit0450-rp2040",
- "heapless",
- "panic-halt",
- "rp2040-boot2",
- "rp2040-hal",
-]
-
-[[package]]
 name = "fit0450-rp2040"
 version = "0.1.0"
 dependencies = [
@@ -358,6 +345,19 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+
+[[package]]
+name = "random-input"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "fit0450-rp2040",
+ "heapless",
+ "panic-halt",
+ "rp2040-boot2",
+ "rp2040-hal",
+]
 
 [[package]]
 name = "rp2040-boot2"

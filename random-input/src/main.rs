@@ -48,7 +48,7 @@ use rand::Rng;
 pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
 
 const XTAL_FREQ_HZ: u32 = 12_000_000u32;
-const REPORT_INTERVAL_US: u64 = 1000; // 10ms
+const REPORT_INTERVAL_US: u64 = 10_000; // 10ms
 
 #[rp2040_hal::entry]
 fn main() -> ! {
@@ -112,9 +112,9 @@ fn main() -> ! {
     let mut last_report_us = timer.get_counter().ticks();
 
     let mut rng = Rng::new(12345);
-    let mut speed = rng.range_f32(-1.0, 1.0);
+    let mut speed = 0.0;
     motor1.set_speed(speed);
-    let mut gap_us = rng.range_u64(500_000, 4_000_000);
+    let mut gap_us = 10_000_000;
     let mut last_speed_change = last_report_us;
 
     loop {

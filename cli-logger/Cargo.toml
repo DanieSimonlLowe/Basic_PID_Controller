@@ -1,0 +1,8 @@
+[package]
+name = "fit0450-serial-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Send/receive plain text lines to a FIT0450 controller board over USB serial"
+
+[dependencies]
+serialport = "4"

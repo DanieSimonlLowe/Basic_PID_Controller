@@ -170,12 +170,13 @@ impl UsbSerial {
 
     /// Write a string over USB serial, retrying (while servicing the USB
     /// stack) until every byte is queued, up to a bounded number of
-    /// attempts. Silently gives up - rather than hanging forever - if
-    /// nothing is connected or the host stops reading mid-message.
+    /// attempts. Doesn't check [`is_connected`](Self::is_connected) first -
+    /// it just tries, and the bounded retry count is what keeps this from
+    /// hanging forever if nothing is connected or the host stops reading
+    /// mid-message. This is deliberate: relying on the host correctly
+    /// asserting DTR before we'll send anything turned out to be a fragile
+    /// thing to depend on across different terminal programs.
     pub fn write_str(&mut self, s: &str) {
-        if !self.is_connected() {
-            return;
-        }
         let mut bytes = s.as_bytes();
         let mut stalled_polls = 0u32;
         while !bytes.is_empty() {
@@ -201,3 +202,4 @@ impl UsbSerial {
         self.write_str("\r\n");
     }
 }
+
