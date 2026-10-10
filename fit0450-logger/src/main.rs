@@ -44,7 +44,11 @@ fn parse_reading(line: &str) -> Option<Reading> {
     let now_us = parts.next()?.trim().parse().ok()?;
     let count = parts.next()?.trim().parse().ok()?;
     let speed = parts.next()?.trim().parse().ok()?;
-    Some(Reading { now_us, count, speed })
+    Some(Reading {
+        now_us,
+        count,
+        speed,
+    })
 }
 
 fn print_available_ports() {
@@ -64,6 +68,7 @@ fn print_available_ports() {
 // so a crash loses at most this many already-flushed-to-OS records while
 // keeping steady-state disk I/O low. Data is still pushed to the OS (flush)
 // after every reading; this only controls how often it's forced to disk.
+const FLUSH_EVERY: usize = 20;
 const SYNC_EVERY: usize = 20;
 
 fn main() {
@@ -116,6 +121,8 @@ fn main() {
     let mut line_buf = String::new();
     let mut byte = [0u8; 1];
     let mut since_sync = 0usize;
+    let mut since_flush = 0usize;
+    let mut loop_count = 0usize;
 
     loop {
         match port.read(&mut byte) {
@@ -130,24 +137,29 @@ fn main() {
 
                     match parse_reading(&line) {
                         Some(reading) => {
-                            println!(
-                                "<- now_us={} count={} speed={}",
-                                reading.now_us, reading.count, reading.speed
-                            );
                             if let Err(e) = log.append(&reading) {
                                 eprintln!("Failed to append reading to log: {e}");
                                 continue;
                             }
-                            if let Err(e) = log.flush() {
-                                eprintln!("Failed to flush log: {e}");
-                            }
-                            since_sync += 1;
-                            if since_sync >= SYNC_EVERY {
-                                if let Err(e) = log.sync() {
-                                    eprintln!("Failed to sync log to disk: {e}");
+                            since_flush += 1;
+                            if since_flush >= FLUSH_EVERY {
+                                if let Err(e) = log.flush() {
+                                    eprintln!("Failed to flush log: {e}");
                                 }
-                                since_sync = 0;
+                                since_flush = 0;
+                                since_sync += 1;
+                                if since_sync >= SYNC_EVERY {
+                                    if let Err(e) = log.sync() {
+                                        eprintln!("Failed to sync log to disk: {e}");
+                                    }
+                                    since_sync = 0;
+                                    println!("Flushed values, {} readings recorded.", loop_count)
+                                }
                             }
+                            if loop_count < 10 {
+                                println!("{} reading processed", loop_count);
+                            }
+                            loop_count += 1;
                         }
                         None => {
                             eprintln!("Skipping unparseable line: {line:?}");

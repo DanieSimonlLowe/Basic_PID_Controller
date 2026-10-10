@@ -80,11 +80,10 @@ f'[i](b) = ((a*d[i]*exp((t[i]-t)/b)*(b+t-t[i]))/b - a*d[i]) * u[t-t[i]]
 
 dl[t]/db = -2f'(b)*(y-f(b))
 
-dl[t]/db = -2*(SUM f'[i](b) [from i = 0 to i = n])*(y-(SUM f[i](b) [from i = 0 to i = n]))
-f'[i](b) = ((a*d[i]*exp((t[i]-t)/b)*(b+t-t[i]))/b - a*d[i]) * u[t-t[i]]
-f[i](b) = a * d[i] * (b * (exp((t[i]-t)/b)-1) - t[i] + t) * u(t-t[i])
+dl[t]/db = -2*a*(SUM f'[i](b) [from i = 0 to i = n])*(y-a*(SUM f[i](b) [from i = 0 to i = n]))
+f'[i](b) = ((d[i]*exp((t[i]-t)/b)*(b+t-t[i]))/b - d[i]) * u[t-t[i]]
+f[i](b) =  d[i] * (b * (exp((t[i]-t)/b)-1) - t[i] + t) * u(t-t[i])
 (using this we can calulate dl[t]/db easly
-
 
 
 Loss at a point (sum to get total loss)
@@ -92,33 +91,55 @@ l[t] = (y(t) - (a * d[i] * (b * (exp((t[i]-t)/b)-1) - t[i] + t) * u(t-t[i])) [fr
 
 d/da Loss at a point
 S = (d[i] * (b * (exp((t[i]-t)/b)-1) - t[i] + t) * u(t-t[i])) [from i = 0 to i = n]
-l[t] = y(t) - aS
+l[t] = (y(t) - aS)^2
 
 So you can estimate minimal loss for a as
 a ~= (sum (S[t]*y(t)))/(sum (S[i]*S[i]))
-This dose not take into account b (as you can easly calulate a optimal a it makes sense to do this seprately and then calulate b
-and then use the new optimal b to calulate a optimal a)
+This dose not take into account b
+
 
 d/db Loss at point
-dl[t]/db = -2*(SUM f'[i](b) [from i = 0 to i = n])*(y-(SUM f[i](b) [from i = 0 to i = n]))
-f'[i](b) = ((a*d[i]*exp((t[i]-t)/b)*(b+t-t[i]))/b - a*d[i]) * u[t-t[i]]
-f[i](b) = a * d[i] * (b * (exp((t[i]-t)/b)-1) - t[i] + t) * u(t-t[i])
+dl[t]/db = -2*a(SUM f'[i](b) [from i = 0 to i = n])*a*(y-(SUM f[i](b) [from i = 0 to i = n]))
+f'[i](b) = ((d[i]*exp((t[i]-t)/b)*(b+t-t[i]))/b - d[i]) * u[t-t[i]]
+f[i](b) = d[i] * (b * (exp((t[i]-t)/b)-1) - t[i] + t) * u(t-t[i])
 
 
-p and l are constents
-Algorth to calulate a, and b
-
-guess p random values of b,
-loss_min = inf
-for each b_guess:
-    calulate the best a, (a ~= (sum (S[t]*y(t)))/(sum (S[i]*S[i])))
-    and then calulate the loss at b_guess with that a
-    if loss < loss_min:
-        the b estimate is now b_guess
-        loss_min = loss
+l = sum (y(t) - af(b))^2
+let a*(b) be the optmal a for b
+let dl*/db be dl/db where a is a function of b
+dl*/db = dl/db + (dl/da)(da*/db) by cain rule.
+dl/da = 0 as a is optomal value
+dl*/db = dl/db
 
 
-for _ in range(0,l1):
-    estimate a with a = (sum (S[t]*y(t)))/(sum (S[t]*S[t]))
-    do Gauss-Newton step so b = b - 0.5*(sum (l[t] * dl[t]/db))/(sum (dl[t]/db)^2)
+TODO find something on a minimization method.
+Algorth to calulate b
+
+start_b = b_min-step
+start_loss = calulate the loss at start_b
+mid_loss = inf
+mid_b = 0
+
+
+min_loss = inf
+min_loss_b = 0
+for each b_guess in range(b_min, b_max, step_size):
+    loss = calulate the loss at b_guess
+    if (loss < start_loss && loss < mid_loss)
+        start_loss = mid_loss
+        start_b = mid_b
+        mid_loss = loss
+        mid_b = b
+    if (loss > mid_loss)
+        optimize(start_b, mid_b, b, l, dl/db)
+        
+        
+
+func optimize(l, m, r, f, f'):
+    l < m < r
+    f(m) < l
+    f(m) < r
+    use brents method https://www2.boulder.swri.edu/~layoung/idl/layoung/math/dbrent.pro
+    https://docs.rs/crate/basin/1.3.0/source/src/solver/brent_derivative.rs
+    https://waxworksmath.com/Software/Code/NRecipes2Matlab/nr_dbrent.m
 

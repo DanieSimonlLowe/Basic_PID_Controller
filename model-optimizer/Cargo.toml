@@ -1,0 +1,14 @@
+[package]
+name = "motor_fit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+basin = "=1.4.0"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+rayon = { version = "1", optional = true }
+structlog = { path = "../structlog" }
+
+[features]
+parallel = ["dep:rayon"]
