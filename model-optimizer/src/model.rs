@@ -309,6 +309,17 @@ impl Evaluator {
         //println!("b: {b}, a: {a}, loss: {loss}, dl/db: {dloss}");
         Ok(Eval { a, loss, dloss })
     }
+
+    pub fn dataset(&self) -> &Dataset {
+        &self.data
+    }
+
+    /// Model output a * S(t, b) at every sample time.
+    pub fn predict(&self, b: f64, a: f64) -> Vec<f64> {
+        let mut buf = vec![(0.0, 0.0); self.data.times.len()];
+        self.fill(b, &mut buf);
+        buf.into_iter().map(|(s, _)| a * s).collect()
+    }
 }
 
 /// Sum a pair of per-chunk partial results over fixed-size chunks of
@@ -339,4 +350,3 @@ where
     }
     acc
 }
-

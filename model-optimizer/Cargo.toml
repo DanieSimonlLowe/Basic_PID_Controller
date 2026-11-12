@@ -8,6 +8,7 @@ basin = "=1.4.0"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 rayon = { version = "1", optional = true }
+plotters = { version = "0.3", default-features = false, features = ["svg_backend", "line_series"] }
 structlog = { path = "../structlog" }
 
 [features]

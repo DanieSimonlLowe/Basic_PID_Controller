@@ -9,6 +9,7 @@ mod grid;
 mod input;
 mod model;
 mod optimizer;
+mod plot;
 mod readings;
 #[cfg(test)]
 mod test_support;
@@ -44,6 +45,9 @@ struct Args {
     /// Maximum BrentDerivative iterations per bracket
     #[arg(long, default_value_t = 200)]
     max_iter: u64,
+    /// Where to write the result plot (SVG)
+    #[arg(long, default_value = "fit.svg")]
+    plot: PathBuf,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,6 +65,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let evaluator = model::Evaluator::new(dataset);
     let result = fit::fit(&evaluator, &grid, args.max_iter)?;
     print_result(&result);
+
+    let best = &result.best;
+    let predicted = evaluator.predict(best.b, best.eval.a);
+    plot::plot_fit(
+        evaluator.dataset(),
+        &predicted,
+        best.eval.a,
+        best.b,
+        &args.plot,
+    )?;
+    println!("\nPlot written to {}", args.plot.display());
     Ok(())
 }
 
