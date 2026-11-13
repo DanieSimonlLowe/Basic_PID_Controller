@@ -41,7 +41,7 @@ use rp2040_hal::Timer;
 
 use fit0450_rp2040::{Encoder, Motor, UsbSerial};
 
-use rand::Rng;
+use rand::{rosc_seed, Rng};
 
 #[link_section = ".boot2"]
 #[used]
@@ -111,7 +111,7 @@ fn main() -> ! {
 
     let mut last_report_us = timer.get_counter().ticks();
 
-    let mut rng = Rng::new(12345);
+    let mut rng = Rng::new(rosc_seed(&pac.ROSC)); // 12345
     let mut speed = 0.0;
     motor1.set_speed(speed);
     let mut gap_us = 10_000_000;
@@ -131,9 +131,13 @@ fn main() -> ! {
 
             if now_us.wrapping_sub(last_speed_change) >= gap_us {
                 last_speed_change = now_us;
-                gap_us = rng.range_u64(500_000, 4_000_000);
-                speed = rng.range_f32(-0.3, 0.3);
-                motor1.set_speed(speed);
+                gap_us = rng.range_u64(100_000, 1_000_000);
+                speed = rng.range_f32(-0.5, 0.5);
+                if speed.abs() > 0.05 {
+                    motor1.set_speed(speed);
+                } else {
+                    motor1.set_speed(0.0);
+                }
             }
         }
     }
