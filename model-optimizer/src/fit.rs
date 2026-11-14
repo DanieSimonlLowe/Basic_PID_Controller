@@ -1,8 +1,9 @@
 //! The full pipeline: coarse scan → brackets → basin refinement → best fit.
 
+use crate::collection_evaluator::Objective;
 use crate::error::FitError;
 use crate::grid::{find_candidates, Candidate};
-use crate::model::{Eval, Evaluator};
+use crate::model::Eval;
 use crate::optimizer::refine;
 
 /// One refined local minimum.
@@ -21,13 +22,17 @@ pub struct FitResult {
 }
 
 /// L*(b) at every grid point.
-pub fn coarse_scan(evaluator: &Evaluator, grid: &[f64]) -> Result<Vec<f64>, FitError> {
+pub fn coarse_scan<E: Objective>(evaluator: &E, grid: &[f64]) -> Result<Vec<f64>, FitError> {
     grid.iter()
         .map(|&b| evaluator.evaluate(b).map(|e| e.loss))
         .collect()
 }
 
-pub fn fit(evaluator: &Evaluator, grid: &[f64], max_iter: u64) -> Result<FitResult, FitError> {
+pub fn fit<E: Objective>(
+    evaluator: &E,
+    grid: &[f64],
+    max_iter: u64,
+) -> Result<FitResult, FitError> {
     let losses = coarse_scan(evaluator, grid)?;
     let candidates = find_candidates(grid, &losses)?;
 

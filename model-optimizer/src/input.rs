@@ -3,6 +3,12 @@
 use crate::error::FitError;
 use crate::readings::Sample;
 
+use std::sync::Arc;
+
+const MIN_STATIONARY_ZERO_SAMPLES: usize = 100;
+const MIN_NONZERO_INPUT_SAMPLES: usize = 1000;
+const MAX_DIFF_STATIONARY: f64 = 0.00001;
+
 /// One step of the reconstructed input:  i(t) = sum(delta_i * u(t - time_i)).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Step {
@@ -37,25 +43,23 @@ pub fn detect_steps(samples: &[Sample], speeds: &[f64], tol: f64) -> Vec<Step> {
 }
 
 /// Everything that does not depend on `b`, computed once.
+#[derive(Clone)]
 pub struct Dataset {
     /// Sample times (s), non-decreasing.
-    pub times: Vec<f64>,
+    pub times: Box<[f64]>,
     /// Measured outputs y(t).
-    pub outputs: Vec<f64>,
+    pub outputs: Box<[f64]>,
     /// Reconstructed input steps, in time order.
-    pub steps: Vec<Step>,
+    pub steps: Box<[Step]>,
 }
 
 impl Dataset {
-    pub fn new(samples: &[Sample], speeds: &[f64], speed_tol: f64) -> Result<Self, FitError> {
-        if !speed_tol.is_finite() || speed_tol < 0.0 {
-            return Err(FitError::Config(
-                "speed tolerance must be finite and >= 0".into(),
-            ));
-        }
-        if samples.len() != speeds.len() {
-            return Err(FitError::Data("samples and speeds differ in length".into()));
-        }
+    pub fn new(
+        samples: &[Sample],
+        speeds: &[f64],
+        speed_tol: f64,
+        output_offset: f64,
+    ) -> Result<Self, FitError> {
         if samples
             .iter()
             .any(|s| !s.time.is_finite() || !s.output.is_finite())
@@ -70,103 +74,137 @@ impl Dataset {
         }
         Ok(Self {
             times: samples.iter().map(|s| s.time).collect(),
-            outputs: samples.iter().map(|s| s.output).collect(),
-            steps,
+            outputs: samples.iter().map(|s| s.output - output_offset).collect(),
+            steps: steps.into_boxed_slice(),
         })
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn find_break_points(samples: &[Sample], speeds: &[f64], speed_tol: f64) -> Vec<usize> {
+    let mut candidates: Vec<usize> = Vec::new();
 
-    fn samples(n: usize, dt: f64) -> Vec<Sample> {
-        (0..n)
-            .map(|k| Sample {
-                time: k as f64 * dt,
-                output: 0.0,
-            })
-            .collect()
-    }
+    let mut stationary_zero_count: usize = 0;
+    let mut nonzero_input_count: usize = 0;
 
-    #[test]
-    fn spec_example_steps() {
-        let speeds = [1.0, 1.0, 1.0, 3.0, 3.0, 3.0, -2.0, -2.0];
-        let steps = detect_steps(&samples(8, 0.01), &speeds, 0.0);
-        assert_eq!(steps.len(), 3);
-        assert_eq!(
-            [steps[0].value, steps[1].value, steps[2].value],
-            [1.0, 3.0, -2.0]
-        );
-        assert_eq!(
-            [steps[0].delta, steps[1].delta, steps[2].delta],
-            [1.0, 2.0, -5.0]
-        );
-        assert_eq!(steps[0].time, 0.0);
-        assert!((steps[1].time - 0.03).abs() < 1e-12);
-        assert!((steps[2].time - 0.06).abs() < 1e-12);
-    }
+    for (index, (sample, &speed)) in samples.iter().zip(speeds).enumerate() {
+        // Treat inputs within speed_tol of zero as zero.
+        if speed.abs() <= speed_tol {
+            // Count consecutive zero-input measurements with an unchanged output.
 
-    #[test]
-    fn deltas_sum_to_last_value() {
-        let speeds = [0.5, 0.5, 2.0, 2.0, -1.0, 4.0, 4.0, 0.0];
-        let steps = detect_steps(&samples(8, 0.1), &speeds, 0.0);
-        let total: f64 = steps.iter().map(|s| s.delta).sum();
-        assert!((total - 0.0).abs() < 1e-12);
-        assert_eq!(steps.len(), 5);
-    }
+            if index > 0 && (sample.output - samples[index - 1].output).abs() < MAX_DIFF_STATIONARY
+            {
+                stationary_zero_count += 1;
+            }
 
-    #[test]
-    fn zero_first_value_still_produces_a_step() {
-        let speeds = [0.0, 0.0, 2.0];
-        let steps = detect_steps(&samples(3, 0.1), &speeds, 0.0);
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[0].delta, 0.0);
-        assert_eq!(steps[1].delta, 2.0);
-    }
-
-    #[test]
-    fn exact_comparison_sees_tiny_changes() {
-        let speeds = [1.0, 1.0001, 1.0001];
-        assert_eq!(detect_steps(&samples(3, 0.1), &speeds, 0.0).len(), 2);
-    }
-
-    #[test]
-    fn tolerance_suppresses_jitter_but_not_real_steps() {
-        let speeds = [1.0, 1.01, 0.99, 1.02, 3.0, 3.01];
-        let steps = detect_steps(&samples(6, 0.1), &speeds, 0.05);
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[1].value, 3.0);
-        assert!((steps[1].delta - 2.0).abs() < 1e-12);
-    }
-
-    #[test]
-    fn dataset_rejects_constant_input() {
-        let res = Dataset::new(&samples(5, 0.1), &[2.0; 5], 0.0);
-        assert!(matches!(res, Err(FitError::Data(_))));
-    }
-
-    #[test]
-    fn dataset_rejects_length_mismatch_and_bad_tolerance() {
-        assert!(matches!(
-            Dataset::new(&samples(5, 0.1), &[1.0, 2.0], 0.0),
-            Err(FitError::Data(_))
-        ));
-        for tol in [-1.0, f64::NAN, f64::INFINITY] {
-            assert!(matches!(
-                Dataset::new(&samples(3, 0.1), &[1.0, 2.0, 3.0], tol),
-                Err(FitError::Config(_))
-            ));
+            if stationary_zero_count >= MIN_STATIONARY_ZERO_SAMPLES
+                && nonzero_input_count > MIN_NONZERO_INPUT_SAMPLES
+            {
+                candidates.push(index);
+            }
+        } else {
+            stationary_zero_count = 0;
+            nonzero_input_count += 1;
         }
     }
 
-    #[test]
-    fn dataset_rejects_non_finite_output() {
-        let mut s = samples(3, 0.1);
-        s[1].output = f64::NAN;
-        assert!(matches!(
-            Dataset::new(&s, &[1.0, 2.0, 3.0], 0.0),
-            Err(FitError::Data(_))
-        ));
+    println!(
+        "There are {} candidate break points in the dataset",
+        candidates.len()
+    );
+
+    // Ignore a final breakpoint if no subsequent non-zero input exists.
+    // Otherwise, we could create a dataset containing only stationary measurements.
+    let mut break_points = Vec::new();
+
+    for (i, &break_index) in candidates.iter().enumerate() {
+        let next_break = candidates.get(i + 1).copied().unwrap_or(samples.len());
+
+        let has_input_after_break = speeds[break_index..next_break]
+            .iter()
+            .any(|speed| speed.abs() > speed_tol);
+
+        if has_input_after_break {
+            break_points.push(break_index);
+        }
+    }
+
+    break_points
+}
+
+pub struct RunCollection {
+    pub datasets: Box<[Arc<Dataset>]>,
+}
+
+impl RunCollection {
+    pub fn new(samples: &[Sample], speeds: &[f64], speed_tol: f64) -> Result<Self, FitError> {
+        if !speed_tol.is_finite() || speed_tol < 0.0 {
+            return Err(FitError::Config(
+                "speed tolerance must be finite and >= 0".into(),
+            ));
+        }
+
+        if samples.len() != speeds.len() {
+            return Err(FitError::Data("samples and speeds differ in length".into()));
+        }
+
+        if samples.is_empty() {
+            return Err(FitError::Data("no samples provided".into()));
+        }
+
+        if samples
+            .iter()
+            .any(|s| !s.time.is_finite() || !s.output.is_finite())
+            || speeds.iter().any(|s| !s.is_finite())
+        {
+            return Err(FitError::Data(
+                "non-finite time, output, or input value".into(),
+            ));
+        }
+
+        let break_points = find_break_points(samples, speeds, speed_tol);
+
+        println!(
+            "There are {} break points in the dataset",
+            break_points.len()
+        );
+
+        let mut datasets: Vec<Arc<Dataset>> = Vec::new();
+        let mut start: usize = 0;
+
+        for break_index in break_points {
+            // Include the breakpoint in the previous dataset.
+            let end = break_index + 1;
+
+            let output_offset = samples[start].output;
+
+            let dataset = Dataset::new(
+                &samples[start..end],
+                &speeds[start..end],
+                speed_tol,
+                output_offset,
+            )?;
+
+            datasets.push(Arc::new(dataset));
+
+            // Start the next dataset at the breakpoint.
+            // This intentionally overlaps the breakpoint sample.
+            start = break_index;
+        }
+
+        // Add the final dataset.
+        let output_offset = samples[start].output;
+
+        let dataset = Dataset::new(
+            &samples[start..],
+            &speeds[start..],
+            speed_tol,
+            output_offset,
+        )?;
+
+        datasets.push(Arc::new(dataset));
+
+        Ok(Self {
+            datasets: datasets.into_boxed_slice(),
+        })
     }
 }

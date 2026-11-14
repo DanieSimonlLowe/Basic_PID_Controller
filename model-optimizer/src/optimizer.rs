@@ -4,19 +4,19 @@ use basin::{
     BoxConstraints, BrentDerivative, CostFunction, Executor, Gradient, ScalarGradientState,
 };
 
+use crate::collection_evaluator::Objective;
 use crate::error::FitError;
 use crate::grid::Candidate;
-use crate::model::Evaluator;
 
 /// The reduced objective L*(b) restricted to one bracket [lo, hi].
 /// cost = L*(b), gradient = dL*/db, bounds = the bracket.
-struct BracketProblem<'a> {
-    evaluator: &'a Evaluator,
+struct BracketProblem<'a, E: Objective> {
+    evaluator: &'a E,
     lo: f64,
     hi: f64,
 }
 
-impl CostFunction for BracketProblem<'_> {
+impl<E: Objective> CostFunction for BracketProblem<'_, E> {
     type Param = f64;
     type Output = f64;
     type Error = FitError;
@@ -26,7 +26,7 @@ impl CostFunction for BracketProblem<'_> {
     }
 }
 
-impl Gradient for BracketProblem<'_> {
+impl<E: Objective> Gradient for BracketProblem<'_, E> {
     type Gradient = f64;
 
     fn gradient(&self, b: &f64) -> Result<f64, FitError> {
@@ -34,7 +34,7 @@ impl Gradient for BracketProblem<'_> {
     }
 }
 
-impl BoxConstraints for BracketProblem<'_> {
+impl<E: Objective> BoxConstraints for BracketProblem<'_, E> {
     fn lower(&self) -> &f64 {
         &self.lo
     }
@@ -45,8 +45,8 @@ impl BoxConstraints for BracketProblem<'_> {
 
 /// Minimise L*(b) inside `candidate.left ..= candidate.right`, seeded at
 /// `candidate.middle`. Returns the best `b` found (always inside the bracket).
-pub fn refine(
-    evaluator: &Evaluator,
+pub fn refine<E: Objective>(
+    evaluator: &E,
     candidate: &Candidate,
     max_iter: u64,
 ) -> Result<f64, FitError> {
@@ -74,6 +74,7 @@ pub fn refine(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Evaluator;
     use crate::test_support::synthetic_dataset;
 
     fn evaluator() -> Evaluator {

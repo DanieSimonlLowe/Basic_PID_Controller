@@ -13,3 +13,4 @@ structlog = { path = "../structlog" }
 
 [features]
 parallel = ["dep:rayon"]
+default = ["parallel"]

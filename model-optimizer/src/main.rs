@@ -3,6 +3,7 @@
 //! Pipeline: readings → input steps (from `speed`) → coarse scan over b →
 //! local-minimum brackets → basin::BrentDerivative per bracket → best fit.
 
+mod collection_evaluator;
 mod error;
 mod fit;
 mod grid;
@@ -19,7 +20,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use crate::fit::FitResult;
-use crate::input::Dataset;
+use crate::input::{Dataset, RunCollection};
 
 #[derive(Parser, Debug)]
 #[command(about = "Fit motor model H(s) = a / (b s^2 + s) from a structlog file")]
@@ -27,6 +28,9 @@ struct Args {
     /// structlog file containing Reading records
     #[arg(long)]
     input: PathBuf,
+    /// structlog file containing Reading records
+    #[arg(long)]
+    confirm: PathBuf,
     /// Lower bound of the b search (seconds, > 0)
     #[arg(long)]
     b_min: f64,
@@ -37,11 +41,8 @@ struct Args {
     #[arg(long)]
     b_step: f64,
     /// Tolerance for detecting a change in `speed` (0 = exact comparison)
-    #[arg(long, default_value_t = 0.0)]
+    #[arg(long, default_value_t = 0.04)]
     speed_tol: f64,
-    /// Subtract the first count from all counts (the model assumes o(0) = 0)
-    #[arg(long)]
-    subtract_initial_count: bool,
     /// Maximum BrentDerivative iterations per bracket
     #[arg(long, default_value_t = 200)]
     max_iter: u64,
@@ -55,21 +56,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let grid = grid::build_grid(args.b_min, args.b_max, args.b_step)?;
 
-    let loaded = readings::load(&args.input, args.subtract_initial_count)?;
+    let loaded = readings::load(&args.input, true)?;
     println!("Loaded {} readings", loaded.samples.len());
 
-    let dataset = Dataset::new(&loaded.samples, &loaded.speeds, args.speed_tol)?;
-    print_input_summary(&dataset);
+    let run_collection = RunCollection::new(&loaded.samples, &loaded.speeds, args.speed_tol)?;
     print_search_settings(&args);
 
-    let evaluator = model::Evaluator::new(dataset);
+    let evaluator = collection_evaluator::CollectionEvaluator::new(&run_collection)?;
     let result = fit::fit(&evaluator, &grid, args.max_iter)?;
     print_result(&result);
 
     let best = &result.best;
-    let predicted = evaluator.predict(best.b, best.eval.a);
+    let confirm_loaded = readings::load(&args.confirm, true)?;
+    let confirm_dataset = Dataset::new(
+        &confirm_loaded.samples,
+        &confirm_loaded.speeds,
+        args.speed_tol,
+        0.0,
+    )?;
+    let confirm_evaluator = model::Evaluator::new(confirm_dataset);
+    let predicted = confirm_evaluator.predict(best.b, best.eval.a);
     plot::plot_fit(
-        evaluator.dataset(),
+        confirm_evaluator.dataset(),
         &predicted,
         best.eval.a,
         best.b,
@@ -77,24 +85,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     println!("\nPlot written to {}", args.plot.display());
     Ok(())
-}
-
-fn print_input_summary(data: &Dataset) {
-    const SHOWN: usize = 5;
-    let steps = &data.steps;
-    println!("\nReconstructed input (from Reading.speed):");
-    println!("    steps: {}", steps.len());
-    println!("    first input value: {}", steps[0].value);
-    println!("    last input value:  {}", steps[steps.len() - 1].value);
-    for s in steps.iter().take(SHOWN) {
-        println!(
-            "    t = {:.6} s  w = {:+.6}  d = {:+.6}",
-            s.time, s.value, s.delta
-        );
-    }
-    if steps.len() > SHOWN {
-        println!("    ... ({} more)", steps.len() - SHOWN);
-    }
 }
 
 fn print_search_settings(args: &Args) {
@@ -115,8 +105,8 @@ fn print_result(result: &FitResult) {
 
     let best = &result.best;
     println!("\nBest fit:");
-    println!("    a    = {:.9}", best.eval.a);
-    println!("    b    = {:.9}", best.b);
+    println!("    a    = {:.9e}", best.eval.a);
+    println!("    b    = {:.9e}", best.b);
     println!("    loss = {:.9e}", best.eval.loss);
     println!("    dL*/db at optimum = {:.3e}", best.eval.dloss);
 

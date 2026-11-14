@@ -22,9 +22,6 @@
 //!   [`phi_dphi`], which avoids the cancellation in the running-state formula.
 //!   If sample times are not sorted, we fall back to the direct O(N*M) loop.
 //! * `evaluate` reuses a scratch buffer, and does not print.
-//! * With the `parallel` cargo feature, large datasets are split into fixed
-//!   chunks processed by rayon. The chunking (and so the floating-point
-//!   summation order) is the same with and without the feature.
 //!
 //! Required steps order: `steps` sorted by time (as before).
 
@@ -32,9 +29,6 @@ use std::sync::Mutex;
 
 use crate::error::FitError;
 use crate::input::{Dataset, Step};
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 /// Below this x the closed forms lose precision to cancellation, so a Taylor
 /// series is used instead. The first omitted term (x^9/9!) is ~7e-15 relative
@@ -54,10 +48,6 @@ const FOLD_X: f64 = 1.0;
 
 /// Fixed chunk size for fills and reductions (deterministic summation order).
 const CHUNK: usize = 4096;
-
-/// Minimum number of samples before rayon is used.
-#[cfg(feature = "parallel")]
-const PAR_MIN_POINTS: usize = 16_384;
 
 /// Returns `(phi(x), dphi(x))` for x >= 0, accurate for all x.
 ///
@@ -237,18 +227,8 @@ impl Evaluator {
         }
     }
 
-    /// Fill the whole buffer, in parallel for large inputs. Every chunk starts
     /// from a fresh state, so chunks are independent.
     fn fill(&self, b: f64, buf: &mut [(f64, f64)]) {
-        #[cfg(feature = "parallel")]
-        {
-            if buf.len() >= PAR_MIN_POINTS {
-                buf.par_chunks_mut(CHUNK)
-                    .enumerate()
-                    .for_each(|(k, chunk)| self.fill_responses(b, k * CHUNK, chunk));
-                return;
-            }
-        }
         self.fill_responses(b, 0, buf);
     }
 
@@ -329,19 +309,6 @@ fn reduce_chunks<F>(buf: &[(f64, f64)], y: &[f64], f: F) -> (f64, f64)
 where
     F: Fn(&[(f64, f64)], &[f64]) -> (f64, f64) + Sync + Send,
 {
-    #[cfg(feature = "parallel")]
-    {
-        if buf.len() >= PAR_MIN_POINTS {
-            let parts: Vec<(f64, f64)> = buf
-                .par_chunks(CHUNK)
-                .zip(y.par_chunks(CHUNK))
-                .map(|(sc, yc)| f(sc, yc))
-                .collect();
-            return parts
-                .iter()
-                .fold((0.0, 0.0), |acc, p| (acc.0 + p.0, acc.1 + p.1));
-        }
-    }
     let mut acc = (0.0, 0.0);
     for (sc, yc) in buf.chunks(CHUNK).zip(y.chunks(CHUNK)) {
         let p = f(sc, yc);
