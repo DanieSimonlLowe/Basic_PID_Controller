@@ -132,7 +132,7 @@ fn main() -> ! {
             if now_us.wrapping_sub(last_speed_change) >= gap_us {
                 last_speed_change = now_us;
                 gap_us = rng.range_u64(100_000, 1_000_000);
-                speed = rng.range_f32(-0.5, 0.5);
+                speed = rng.range_f32(-0.3, 0.3);
                 if speed.abs() > 0.05 {
                     motor1.set_speed(speed);
                 } else {
