@@ -1,0 +1,7 @@
+[package]
+name = "pd-controller-lib"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+signal-filters = "0.1.17"
